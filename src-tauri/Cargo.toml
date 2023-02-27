@@ -1,0 +1,33 @@
+[package]
+name = "yuntech_hook_course"
+version = "0.1.0"
+description = "A雲科搶課系統"
+authors = ["beenyan <asdfghjkl42045@gmail.com>"]
+license = ""
+repository = ""
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.2", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "1.2", features = ["http-all", "shell-open"] }
+cookie = "0.17.0"
+r2d2 = "0.8.10"
+diesel = { version = "2.0.0", features = ["sqlite", "r2d2"] }
+dotenvy = "0.15.6"
+log = "0.4"
+fern = "0.6"
+chrono = "0.4"
+
+[features]
+# by default Tauri runs in production mode
+# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
+default = ["custom-protocol"]
+# this feature is used used for production builds where `devPath` points to the filesystem
+# DO NOT remove this
+custom-protocol = ["tauri/custom-protocol"]

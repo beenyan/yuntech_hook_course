@@ -1,0 +1,6 @@
+-- Your SQL goes here
+CREATE TABLE cookies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    name VARCHAR UNIQUE NOT NULL,
+    value VARCHAR NOT NULL
+)
