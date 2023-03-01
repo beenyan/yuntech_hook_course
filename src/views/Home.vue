@@ -7,6 +7,7 @@ import { Body, getClient, ResponseType } from '@tauri-apps/api/http';
 import { invoke } from '@tauri-apps/api';
 import Swal from 'sweetalert2';
 import { Response } from '../assets/ts/Type';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 
 enum EVENTTARGET {
     // 查詢
@@ -15,8 +16,13 @@ enum EVENTTARGET {
     Register = 'ctl00$ContentPlaceHolder1$RegisterButton',
     // 確認
     Check = 'ctl00$ContentPlaceHolder1$NextStepButton',
-    // 送出選課
+    // 送出
     Send = 'ctl00$ContentPlaceHolder1$SaveButton',
+}
+
+enum LocalStorage {
+    Delay = 'delay',
+    CourseNumber = 'course_number'
 }
 
 const cookie = ref('');
@@ -25,6 +31,7 @@ const Delay = ref(2000);
 const CourseSelectionRegisterUrl = 'https://webapp.yuntech.edu.tw/AAXCCS/CourseSelectionRegister.aspx';
 const isStart = ref(false);
 const pause = ref(false);
+const permissionGranted = ref(false);
 
 async function delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -132,6 +139,11 @@ async function check(CourseNumber: string, html: string) {
 }
 
 async function send(html: string) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const message = (<HTMLSpanElement>doc.querySelector('#ContentPlaceHolder1_CourseCheckListGridView_ProcessMsg_0')).textContent?.trim();
+    if (message)
+        throw new Error(message);
+
     const payload = parseToken(html);
     const client = await getClient();
     const body = Body.form({
@@ -157,36 +169,57 @@ function parseResult(html: string) {
 
 async function start() {
     if (!CourseNumber.value) return;
+    localStorage.setItem(LocalStorage.Delay, Delay.value.toString());
+    localStorage.setItem(LocalStorage.CourseNumber, CourseNumber.value);
 
-    isStart.value = true;
-    while (1) {
-        for (const cn of CourseNumber.value.split(',')) {
-            const searchHTML = await search(cn);
-            const registerHTML = await register(cn, searchHTML);
-            const checkHTML = await check(cn, registerHTML);
-            const sendHTML = await send(checkHTML);
+    try {
+        isStart.value = true;
+        const delayTime = Delay.value;
+        const cnList = CourseNumber.value.split(',');
+        while (1) {
+            for (const cn of cnList) {
+                const searchHTML = await search(cn);
+                const registerHTML = await register(cn, searchHTML);
+                const checkHTML = await check(cn, registerHTML);
+                const sendHTML = await send(checkHTML);
 
-            const res = parseResult(sendHTML);
-            const now = new Date().toLocaleString();
-            await invoke<Response<string>>('logger', { message: `學期課號: ${cn}, ${res}` });
-            Swal.fire({
-                position: 'bottom-end',
-                backdrop: false,
-                title: `學期課號: ${cn}`,
-                html: `${now}<br>${res}`,
-                showConfirmButton: false,
-                timer: 1500
-            });
+                const res = parseResult(sendHTML);
+                const now = new Date().toLocaleString();
+                await invoke<Response<string>>('logger', { message: `學期課號: ${cn}, ${res}` });
+                Swal.fire({
+                    position: 'bottom-end',
+                    backdrop: false,
+                    title: `學期課號: ${cn}`,
+                    html: `${now}<br>${res}`,
+                    showConfirmButton: false,
+                    timer: 1500
+                });
 
-            if (pause.value === true) {
-                isStart.value = false;
-                pause.value = false;
-                return;
+                if (res === '完成選課') {
+                    if (permissionGranted)
+                        sendNotification({ title: '選課成功', body: `完成選課：${now}\n${cn}` });
+
+                    const index = cnList.findIndex(_cn => _cn === cn);
+                    cnList.splice(index, 1);
+                    if (!cnList.length)
+                        stop();
+                }
+
+                if (pause.value === true) {
+                    isStart.value = false;
+                    pause.value = false;
+                    return;
+                }
             }
-        }
 
-        await delay(Delay.value);
+            await delay(delayTime);
+        }
+    } catch (error: any) {
+        Swal.fire('選課失敗', error.message, 'error');
+        isStart.value = false;
+        pause.value = false;
     }
+
 }
 
 async function stop() {
@@ -195,7 +228,16 @@ async function stop() {
 
 onMounted(async () => {
     try {
+        permissionGranted.value = await isPermissionGranted();
+        if (!permissionGranted.value) {
+            const permission = await requestPermission();
+            permissionGranted.value = permission === 'granted';
+        }
+
         await getCookie();
+
+        Delay.value = parseInt(localStorage.getItem(LocalStorage.Delay) ?? '2000');
+        CourseNumber.value = localStorage.getItem(LocalStorage.CourseNumber) ?? '';
     } catch (error: any) {
         Swal.fire('取得 cookie 失敗', error.message, 'error');
     }

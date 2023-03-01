@@ -1,10 +1,11 @@
+use crate::utils::ASSETS_DIR;
 use diesel::{r2d2::ConnectionManager, SqliteConnection};
 
 pub type Connection = SqliteConnection;
 pub type Pool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
 
 pub fn connect_pool() -> Pool {
-    let database_url = "assets/Cookie";
+    let database_url = format!("{ASSETS_DIR}/Cookie");
 
     // create db connection pool
     let manager = ConnectionManager::<SqliteConnection>::new(database_url);
